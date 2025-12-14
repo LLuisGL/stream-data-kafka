@@ -188,6 +188,7 @@ public class Main {
             System.out.println("=======================================================");
             System.out.println("Presiona Ctrl+C para detener la aplicación");
             System.out.println("=======================================================");
+            System.out.println("=======================================================");
 
             // Esperar a que todas las queries terminen
             spark.streams().awaitAnyTermination();
