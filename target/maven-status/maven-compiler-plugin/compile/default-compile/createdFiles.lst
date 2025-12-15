@@ -1,0 +1,3 @@
+com/example/source/KafkaSource.class
+com/example/processor/EventProcessor.class
+com/example/Main.class
