@@ -69,9 +69,8 @@ public class EventProcessor {
                         col("total_sales"),
                         col("total_transactions"),
                         round(col("avg_transaction"), 2).as("avg_transaction")
-                )
-                .orderBy(col("minute").desc());
-    }
+                );    
+        }
 
     /**
      * 2. Top N productos más vistos
@@ -151,7 +150,7 @@ public class EventProcessor {
     public Dataset<Row> getVisitsByCategory(Dataset<Row> events) {
         return events
                 .filter(col("event_type").isin("view", "add_to_cart", "purchase"))
-                .groupBy(window(col("timestamp"), "1 minute").alias("win"), col("category"))
+                .groupBy(window(col("event_time"), "1 minute").alias("win"), col("category"))
                 .agg(
                         sum(when(col("event_type").equalTo("view"), 1).otherwise(0)).alias("views"),
                         sum(when(col("event_type").equalTo("add_to_cart"), 1).otherwise(0)).alias("add_to_cart"),
