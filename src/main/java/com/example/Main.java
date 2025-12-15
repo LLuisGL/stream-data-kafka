@@ -22,8 +22,8 @@ public class Main {
                                 .appName("Transacciones en Tiempo Real")
                                 .config("spark.sql.streaming.checkpointLocation", "/tmp/spark-checkpoint")
                                 .config("spark.sql.adaptive.enabled", "true")
-                                .config("spark.sql.shuffle.partitions", "10")
                                 .master("local[*]")
+                                .config("spark.sql.shuffle.partitions", "10")
                                 .getOrCreate();
 
                 // Reducir verbosidad de logs
@@ -34,7 +34,6 @@ public class Main {
 
                 try {
                         // 1. LEER STREAM DESDE KAFKA
-                        System.out.println("Paso 1: Conectando a Kafka...");
                         KafkaSource kafkaSource = new KafkaSource(spark);
                         Dataset<Row> rawStream = kafkaSource.readStream();
                         System.out.println("✓ Conexión a Kafka establecida");
@@ -46,7 +45,6 @@ public class Main {
 
                         // Parsear JSON desde Kafka
                         Dataset<Row> parsedEvents = processor.parseEvents(rawStream);
-                        System.out.println("✓ Parser de eventos configurado");
 
                         // Mostrar esquema de datos
                         System.out.println("\nEsquema de datos:");
@@ -55,12 +53,9 @@ public class Main {
 
                         // 3. CALCULAR MÉTRICAS
                         System.out.println("Paso 3: Configurando métricas...");
-                        Dataset<Row> salesPerMinute = processor.calculateSalesPerMinute(parsedEvents);
-                        Dataset<Row> topViewedProducts = processor.getTopViewedProducts(parsedEvents, 5);
-                        Dataset<Row> avgTicketPerUser = processor.getAverageTicketPerUser(parsedEvents);
-                        Dataset<Row> conversionRate = processor.calculateConversionRate(parsedEvents);
-                        Dataset<Row> visitsByCategory = processor.getVisitsByCategory(parsedEvents);
-                        Dataset<Row> demandPeaks = processor.detectDemandPeaks(parsedEvents);
+                        Dataset<Row> salesPerMinute = processor.calculateSalesPerMinute(parsedEvents); //ventas por minuto
+                        Dataset<Row> topViewedProducts = processor.getTopViewedProducts(parsedEvents, 5); //top 5 productos más vistos
+                        Dataset<Row> visitsByCategory = processor.getVisitsByCategory(parsedEvents);//visitas por categoría
                         System.out.println("✓ Métricas configuradas");
                         System.out.println();
 
@@ -141,27 +136,6 @@ public class Main {
                                         .trigger(Trigger.ProcessingTime("30 seconds"))
                                         .start();
 
-                        // Query 3: Ticket promedio por usuario
-                        System.out.println("Iniciando: Ticket Promedio por Usuario");
-                        StreamingQuery avgTicketQuery = avgTicketPerUser.writeStream()
-                                        .outputMode("complete")
-                                        .format("console")
-                                        .option("truncate", false)
-                                        .option("numRows", 10)
-                                        .queryName("TicketPromedio")
-                                        .trigger(Trigger.ProcessingTime("10 seconds"))
-                                        .start();
-
-                        // Query 4: Tasa de conversión
-                        System.out.println("Iniciando: Tasa de Conversión");
-                        StreamingQuery conversionQuery = conversionRate.writeStream()
-                                        .outputMode("complete") // Keep as "complete" now that we use windows
-                                        .format("console")
-                                        .option("truncate", false)
-                                        .queryName("TasaConversion")
-                                        .trigger(Trigger.ProcessingTime("10 seconds"))
-                                        .start();
-
                         // Query 5: Visitas por categoría
                         System.out.println("Iniciando: Visitas por Categoría");
                         StreamingQuery visitsQuery = visitsByCategory.writeStream()
@@ -185,33 +159,6 @@ public class Main {
                                                         "hdfs://localhost:9000/ecommerce/checkpoints/visits_by_category")
                                         .partitionBy("process_date")
                                         .queryName("VisitasPorCategoriaHDFS")
-                                        .trigger(Trigger.ProcessingTime("30 seconds"))
-                                        .start();
-
-                        // Query 6: Picos de demanda
-                        System.out.println("Iniciando: Detección de Picos de DemandaIniciando: Detección de Picos de Demanda");
-                        StreamingQuery peaksQuery = demandPeaks.writeStream()
-                                        .outputMode("append")
-                                        .format("console")
-                                        .option("truncate", false)
-                                        .queryName("PicosDemanda")
-                                        .trigger(Trigger.ProcessingTime("10 seconds"))
-                                        .start();
-                        
-                        //hdfs  
-                        Dataset<Row> peaksWithMetadata = demandPeaks
-                                        .withColumn("detection_timestamp", current_timestamp())
-                                        .withColumn("detection_date", date_format(current_timestamp(), "yyyy-MM-dd"))
-                                        .withColumn("detection_hour", hour(current_timestamp()));
-
-                        StreamingQuery peaksHdfsQuery = peaksWithMetadata.writeStream()
-                                        .outputMode("append")
-                                        .format("parquet")
-                                        .option("path", "hdfs://localhost:9000/ecommerce/analytics/demand_peaks")
-                                        .option("checkpointLocation",
-                                                        "hdfs://localhost:9000/ecommerce/checkpoints/demand_peaks")
-                                        .partitionBy("detection_date")
-                                        .queryName("PicosDemandaHDFS")
                                         .trigger(Trigger.ProcessingTime("30 seconds"))
                                         .start();
 
@@ -248,29 +195,8 @@ public class Main {
                                         .trigger(Trigger.ProcessingTime("30 seconds"))
                                         .start();
 
+                        System.out.println("✓ Todas las queries iniciadas con éxito");
                         System.out.println();
-                        System.out.println("=======================================================");
-                        System.out.println("=== Todas las queries iniciadas correctamente ===");
-                        System.out.println("=======================================================");
-                        System.out.println();
-                        System.out.println("Métricas activas:");
-                        System.out.println("  1. Ventas por Minuto (actualización cada 10s)");
-                        System.out.println("  2. Top 5 Productos Más Vistos (actualización cada 10s)");
-                        System.out.println("  3. Ticket Promedio por Usuario (actualización cada 10s)");
-                        System.out.println("  4. Tasa de Conversión (actualización cada 10s)");
-                        System.out.println("  5. Visitas por Categoría (actualización cada 10s)");
-                        System.out.println("  6. Picos de Demanda (actualización cada 10s)");
-                        System.out.println();
-                        System.out.println("Almacenamiento:");
-                        System.out.println("  - Agregaciones por Usuario → /tmp/spark-output/users");
-                        System.out.println("  - Agregaciones por Categoría → /tmp/spark-output/categories");
-                        System.out.println("  - Agregaciones por Producto → /tmp/spark-output/products");
-                        System.out.println();
-                        System.out.println("=======================================================");
-                        System.out.println("Presiona Ctrl+C para detener la aplicación");
-                        System.out.println("=======================================================");
-                        System.out.println("=======================================================");
-
                         // Esperar a que todas las queries terminen
                         spark.streams().awaitAnyTermination();
 
